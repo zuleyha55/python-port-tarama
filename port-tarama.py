@@ -28,3 +28,6 @@ Enter "help" below or click "Help" above for more information.
 ...     print(f"\nHata oluştu: {e}")
 ... 
 ... print("\n" + "-" * 30)
+... print("Tarama tamamlandı.")
+
+
