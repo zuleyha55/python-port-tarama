@@ -1,50 +1,39 @@
+import socket
 import threading
-from queue import Queue
-import time
+import subprocess
 
-# Hedef bilgilerini al
-target = input("Taramak istediğiniz IP veya Domain: ")
-print(f"\n{target} taranıyor... Bu işlem seçilen port sayısına göre vakit alabilir.")
-
-# Thread güvenliği için kilit ve port kuyruğu
+target_net = input("Ağ adresini girin (Örn: 192.168.1): ")
+common_ports = [21, 22, 23, 25, 53, 80, 110, 139, 443, 445, 3306, 3389]
 print_lock = threading.Lock()
-queue = Queue()
 
-def portscan(port):
-    """Port tarama işlemini gerçekleştiren fonksiyon"""
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.settimeout(1) # 1 saniye bekleme süresi (İnternet taramaları için ideal)
-    try:
-        con = s.connect_ex((target, port))
+def scan_ports(ip):
+    # Port tarama öncesi host aktif mi diye bak (Ping)
+    check = subprocess.run(['ping', '-c', '1', '-W', '1', ip], 
+                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    
+    if check.returncode == 0:
         with print_lock:
-            if con == 0:
-                print(f"[+] Port {port:5} : AÇIK")
-        s.close()
-    except:
-        pass
+            print(f"\n[+] HOST AKTİF: {ip}")
+        
+        for port in common_ports:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(0.3)
+            result = sock.connect_ex((ip, port))
+            if result == 0:
+                with print_lock:
+                    print(f"    [>] Port {port}: AÇIK")
+            sock.close()
 
-def threader():
-    """Kuyruktaki işleri işçilere (thread) dağıtan fonksiyon"""
-    while True:
-        worker = queue.get()
-        portscan(worker)
-        queue.task_done()
+threads = []
+print(f"\n[*] {target_net}.0/24 ağı taranıyor...")
 
-# Kaç adet eş zamanlı çalışan (thread) olacağını belirle
-# 100-200 arası idealdir, çok yüksek yapmak hedef sistem tarafından engellenmenize sebep olabilir.
-for x in range(100):
-    t = threading.Thread(target=threader)
-    t.daemon = True # Ana program kapandığında threadleri de kapat
+for i in range(1, 255):
+    ip_to_scan = f"{target_net}.{i}"
+    t = threading.Thread(target=scan_ports, args=(ip_to_scan,))
+    threads.append(t)
     t.start()
 
-start_time = time.time()
+for t in threads:
+    t.join()
 
-# Hangi port aralığını tarayacağımızı seçelim (Örn: 1-1000 arası)
-for port in range(1, 1001):
-    queue.put(port)
-
-# Tüm işlerin bitmesini bekle
-queue.join()
-
-end_time = time.time()
-print(f"\nTarama tamamlandı. Geçen süre: {round(end_time - start_time, 2)} saniye.")
+print("\n[!] Tarama tamamlandı.")
