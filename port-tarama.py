@@ -1,33 +1,50 @@
-Python 3.14.2 (tags/v3.14.2:df79316, Dec  5 2025, 17:18:21) [MSC v.1944 64 bit (AMD64)] on win32
-Enter "help" below or click "Help" above for more information.
->>> import socket
-... import sys
-... 
-... # Kullanıcıdan girdi al
-... target = input("Taramak istediğiniz IP veya Domain: ")
-... 
-... print(f"\nTarama başlatıldı: {target}")
-... print("-" * 30)
-... 
-... try:
-...     for port in range(1, 65536):
-...     
-...         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM) 
-...         sock.settimeout(0.01) # Çok hızlı geçmesi için süreyi iyice kısalttık
-...         
-...         result = sock.connect_ex((target, port))
-...         
-...         if result == 0:
-...             # Açık port bulunduğunda satırı temizle ve kalıcı olarak yaz
-...             sys.stdout.write(f"\r[+] Port {port}: AÇIK\n")
-...             sys.stdout.flush()
-...             
-...         sock.close()
-... 
-... except Exception as e:
-...     print(f"\nHata oluştu: {e}")
-... 
-... print("\n" + "-" * 30)
-... print("Tarama tamamlandı.")
+import threading
+from queue import Queue
+import time
 
+# Hedef bilgilerini al
+target = input("Taramak istediğiniz IP veya Domain: ")
+print(f"\n{target} taranıyor... Bu işlem seçilen port sayısına göre vakit alabilir.")
 
+# Thread güvenliği için kilit ve port kuyruğu
+print_lock = threading.Lock()
+queue = Queue()
+
+def portscan(port):
+    """Port tarama işlemini gerçekleştiren fonksiyon"""
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.settimeout(1) # 1 saniye bekleme süresi (İnternet taramaları için ideal)
+    try:
+        con = s.connect_ex((target, port))
+        with print_lock:
+            if con == 0:
+                print(f"[+] Port {port:5} : AÇIK")
+        s.close()
+    except:
+        pass
+
+def threader():
+    """Kuyruktaki işleri işçilere (thread) dağıtan fonksiyon"""
+    while True:
+        worker = queue.get()
+        portscan(worker)
+        queue.task_done()
+
+# Kaç adet eş zamanlı çalışan (thread) olacağını belirle
+# 100-200 arası idealdir, çok yüksek yapmak hedef sistem tarafından engellenmenize sebep olabilir.
+for x in range(100):
+    t = threading.Thread(target=threader)
+    t.daemon = True # Ana program kapandığında threadleri de kapat
+    t.start()
+
+start_time = time.time()
+
+# Hangi port aralığını tarayacağımızı seçelim (Örn: 1-1000 arası)
+for port in range(1, 1001):
+    queue.put(port)
+
+# Tüm işlerin bitmesini bekle
+queue.join()
+
+end_time = time.time()
+print(f"\nTarama tamamlandı. Geçen süre: {round(end_time - start_time, 2)} saniye.")
